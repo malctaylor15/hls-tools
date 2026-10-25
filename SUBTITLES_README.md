@@ -24,13 +24,14 @@ segment begins with `WEBVTT`; a playlist begins with `#EXTM3U`.
 
 ```bash
 cd hls-tools
-python3 subtitles_download.py --curl-file subtitles-request.txt --output ~/Downloads/class-subtitles.srt
+python3 subtitles_download.py --curl-file subtitles-request.txt --format srt
 ```
 
-For a plain transcript, change the output filename:
+This saves to `downloads-YYYY-MM-DD/subtitles.srt` beside the scripts. For a
+plain transcript, change the format:
 
 ```bash
-python3 subtitles_download.py --curl-file subtitles-request.txt --output ~/Downloads/class-transcript.txt
+python3 subtitles_download.py --curl-file subtitles-request.txt --format txt
 ```
 
 Alternatively, after copying a fresh subtitle playlist request:

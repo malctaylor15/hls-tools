@@ -93,6 +93,11 @@ class Tests(unittest.TestCase):
                     self.assertEqual(subtitles.main(['--playlist-file', str(root / 'subs.m3u8'),
                         '--base-url', base, '--output', str(root / 'transcript.txt')]), 0)
                 self.assertEqual((root / 'transcript.txt').read_text(), 'not only for the shoulders and\n')
+                default = root / 'downloads-2026-10-25' / 'subtitles.txt'
+                with patch.object(subtitles, 'default_output', return_value=default) as path, contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(subtitles.main(['--curl-file', str(curl), '--format', 'txt']), 0)
+                path.assert_called_once_with('subtitles.txt')
+                self.assertEqual(default.read_text(), 'not only for the shoulders and\n')
                 (root / '1.vtt').write_text(HEADER)
                 (root / '2.vtt').write_text(HEADER)
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):

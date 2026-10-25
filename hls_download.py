@@ -2,6 +2,7 @@
 """Download simple, completed MPEG-TS HLS playlists using the standard library."""
 import argparse
 from dataclasses import dataclass
+from datetime import date
 import http.client
 import json
 import math
@@ -20,6 +21,11 @@ import urllib.request
 
 class DownloadError(Exception):
     pass
+
+
+def default_output(filename, current_date=None):
+    day = current_date or date.today()
+    return Path(__file__).resolve().parent / f'downloads-{day.isoformat()}' / filename
 
 
 def clean_copied_url(value):
@@ -305,15 +311,13 @@ def main(argv=None):
     parser.add_argument('--origin')
     parser.add_argument('--inspect', action='store_true')
     args = parser.parse_args(argv)
-    if not args.inspect and not args.output:
-        parser.error('--output is required unless --inspect is used')
     work = None
     try:
-        output = args.output.expanduser().absolute() if args.output else None
+        output = args.output.expanduser().absolute() if args.output else default_output('video.mp4')
         if not args.inspect:
             if output.exists():
                 raise DownloadError('Output already exists; choose another filename.')
-            if not output.parent.is_dir():
+            if args.output and not output.parent.is_dir():
                 raise DownloadError('Output directory does not exist.')
             if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
                 raise DownloadError('FFmpeg and FFprobe must be installed and on PATH.')
@@ -343,6 +347,8 @@ def main(argv=None):
         if args.inspect:
             print('Supported: completed, unencrypted media playlist. Media format is checked during download.')
             return 0
+        if not args.output:
+            output.parent.mkdir(exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix='.hls-download-', dir=output.parent))
         for index, segment in enumerate(playlist.segments):
             destination = work / f'{index:06d}.ts'

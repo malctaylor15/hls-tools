@@ -24,10 +24,10 @@ In your browser's Network panel, locate the **media playlist** request (often `r
 
 ```bash
 python3 hls_download.py --curl-file request.txt --inspect
-python3 hls_download.py --curl-file request.txt --output video.mp4
+python3 hls_download.py --curl-file request.txt
 ```
 
-`--inspect` checks the playlist without downloading its segments. You can also use `--playlist-url URL` or `--playlist-file path/to/playlist.m3u8`. For saved playlists with relative segment URLs, supply `--base-url ORIGINAL_PLAYLIST_URL`.
+`--inspect` checks the playlist without downloading its segments. The download saves to `downloads-YYYY-MM-DD/video.mp4` inside the repository, using your local date. You can choose another path with `--output video.mp4`. The tool also accepts `--playlist-url URL` or `--playlist-file path/to/playlist.m3u8`. For saved playlists with relative segment URLs, supply `--base-url ORIGINAL_PLAYLIST_URL`.
 
 ### Download subtitles
 
@@ -35,14 +35,14 @@ Capture the **subtitle playlist** request separately and save its cURL command a
 
 ```bash
 python3 subtitles_download.py --curl-file subtitles-request.txt --inspect
-python3 subtitles_download.py --curl-file subtitles-request.txt --output subtitles.srt
+python3 subtitles_download.py --curl-file subtitles-request.txt --format srt
 ```
 
-Use an output name ending in `.vtt` or `.txt` for those formats. The subtitle tool accepts the same playlist input options as the video tool. If you have a saved subtitle playlist, use `--playlist-file path/to/subtitles.m3u8`.
+The default destination is `downloads-YYYY-MM-DD/subtitles.srt` in this example. Without `--format`, it saves `subtitles.vtt`; use `--format txt` for plain text. An explicit `--output subtitles.srt` also selects the format from its extension. The subtitle tool accepts the same playlist input options as the video tool. If you have a saved subtitle playlist, use `--playlist-file path/to/subtitles.m3u8`.
 
 ## What the tools support
 
-Both tools accept completed, unencrypted media playlists and preserve the exact segment URLs. Browser cookies and authorization headers from a copied cURL request are scoped to the playlist's origin. Existing output files are never overwritten. Failed downloads retain a temporary directory beside the requested output for inspection.
+Both tools accept completed, unencrypted media playlists and preserve the exact segment URLs. Browser cookies and authorization headers from a copied cURL request are scoped to the playlist's origin. Existing output files are never overwritten; if the default filename already exists, choose another name with `--output`. Failed downloads retain a temporary directory beside the requested output for inspection.
 
 Master playlists, live streams, encryption, byte ranges, initialization segments, and discontinuities are outside the supported subset. Video downloads also require standard MPEG-TS segments and codecs compatible with MP4 remuxing. Signed URLs can expire; capture a fresh request if access fails.
 

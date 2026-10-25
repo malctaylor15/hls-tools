@@ -10,7 +10,7 @@ import shutil
 import sys
 import tempfile
 
-from hls_download import DownloadError, fetch, parse_curl, parse_playlist
+from hls_download import DownloadError, default_output, fetch, parse_curl, parse_playlist
 
 
 @dataclass(frozen=True)
@@ -142,20 +142,18 @@ def main(argv=None):
     parser.add_argument('--video-start-seconds', type=float,
                         help='Optional video MPEG-TS start clock in seconds; default preserves the first map local clock')
     args = parser.parse_args(argv)
-    if not args.inspect and not args.output:
-        parser.error('--output is required unless --inspect is used')
     work = None
     try:
         if args.video_start_seconds is not None and not math.isfinite(args.video_start_seconds):
             raise DownloadError('Video start must be a finite number.')
-        output = args.output.expanduser().absolute() if args.output else None
-        kind = args.format or (output.suffix.lstrip('.').lower() if output else 'vtt')
+        kind = args.format or (args.output.suffix.lstrip('.').lower() if args.output else 'vtt')
+        output = args.output.expanduser().absolute() if args.output else default_output(f'subtitles.{kind}')
         if not args.inspect:
             if kind not in ('vtt', 'srt', 'txt'):
                 raise DownloadError('Choose a .vtt, .srt, or .txt output, or specify --format.')
             if output.exists():
                 raise DownloadError('Output already exists; choose another filename.')
-            if not output.parent.is_dir():
+            if args.output and not output.parent.is_dir():
                 raise DownloadError('Output directory does not exist.')
         headers = {'user-agent': 'Python-HLS-Downloader/1.0', 'accept': '*/*'}
         url = args.playlist_url
@@ -180,6 +178,8 @@ def main(argv=None):
         if args.inspect:
             print('Subtitle contents and timestamp maps are checked during download.')
             return 0
+        if not args.output:
+            output.parent.mkdir(exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix='.hls-subtitles-', dir=output.parent))
         texts = []
         for index, segment in enumerate(playlist.segments):

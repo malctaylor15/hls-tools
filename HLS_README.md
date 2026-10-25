@@ -20,7 +20,7 @@ Chrome input: right-click the **media playlist** request in Network, choose
 Then run:
 
 ```bash
-python3 hls_download.py --curl-file request.txt --output ~/Downloads/class-video.mp4
+python3 hls_download.py --curl-file request.txt
 ```
 
 On macOS you can also pass the clipboard directly:
@@ -29,7 +29,9 @@ On macOS you can also pass the clipboard directly:
 pbpaste | python3 hls_download.py --curl-file - --output ~/Downloads/class-video.mp4
 ```
 
-The command is parsed as text, never executed. GET requests, `-H` headers, inline
+By default, output goes to `downloads-YYYY-MM-DD/video.mp4` beside the scripts.
+Use `--output ~/Downloads/class-video.mp4` to choose another path. The command is
+parsed as text, never executed. GET requests, `-H` headers, inline
 `-b` cookies, user agent and Referer are supported. Transport, compression, range,
 and cache-validation headers are omitted so full segments are requested. Browser
 identity/context headers are reused; `--referer` and `--origin` override copied values.

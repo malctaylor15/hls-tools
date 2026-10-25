@@ -14,7 +14,7 @@ python3 hls_download.py --playlist-file path/to/video.m3u8 --inspect
 python3 subtitles_download.py --playlist-file path/to/subtitles.m3u8 --inspect
 ```
 
-The first command runs both test modules. The `--inspect` commands validate and summarize playlists without downloading segments. For actual downloads, see the examples in the README files; output files are never overwritten.
+The first command runs both test modules. The `--inspect` commands validate and summarize playlists without downloading segments. Actual downloads default to a repository-local `downloads-YYYY-MM-DD/` folder; `--output` overrides it. Output files are never overwritten.
 
 ## Coding Style & Naming Conventions
 

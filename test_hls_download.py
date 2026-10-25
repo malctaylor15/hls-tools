@@ -1,4 +1,5 @@
 import contextlib
+from datetime import date
 import http.server
 import io
 from pathlib import Path
@@ -17,6 +18,10 @@ def manifest(entries, extra=''):
 
 
 class Tests(unittest.TestCase):
+    def test_default_output_uses_repo_and_date(self):
+        output = hls.default_output('video.mp4', date(2026, 10, 25))
+        self.assertEqual(output, Path(hls.__file__).resolve().parent / 'downloads-2026-10-25' / 'video.mp4')
+
     def test_curl_input(self):
         command = """curl --url 'https://example.test/rendition.m3u8?signature=abc&expires=123' \\
   -H 'accept: */*' \\
@@ -149,6 +154,10 @@ class Tests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(hls.main(['--curl-file', str(curl_file), '--output', str(root / 'curl.mp4')]), 0)
                 self.assertEqual({s['codec_type'] for s in hls.probe(root / 'curl.mp4')['streams']}, {'audio', 'video'})
+                default = root / 'downloads-2026-10-25' / 'video.mp4'
+                with patch.object(hls, 'default_output', return_value=default), contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(hls.main(['--playlist-url', base + '/source.m3u8']), 0)
+                self.assertTrue(default.is_file())
                 self.assertTrue(any(path.endswith('.ts') and cookie == 'session=fixture' for path, cookie in cookies_seen))
                 original = output.read_bytes()
                 with contextlib.redirect_stderr(io.StringIO()):

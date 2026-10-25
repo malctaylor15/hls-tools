@@ -13,3 +13,4 @@ request*.txt
 *.srt
 .hls-download-*/
 .hls-subtitles-*/
+downloads-*/
