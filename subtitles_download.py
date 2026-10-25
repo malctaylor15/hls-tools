@@ -171,6 +171,8 @@ def main(argv=None):
             text, base = args.playlist_file.expanduser().read_text(encoding='utf-8-sig'), args.base_url
         playlist = parse_playlist(text, base)
         print(f'Segments: {len(playlist.segments)}; duration: {playlist.duration:.5f}s')
+        if playlist.init_url:
+            playlist.issues.append('initialization segments are not WebVTT subtitles')
         if playlist.issues:
             print('Unsupported features: ' + '; '.join(playlist.issues))
             if not args.inspect:

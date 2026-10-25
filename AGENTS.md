@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository keeps its Python modules and tests at the top level. `hls_download.py` downloads completed, unencrypted HLS video playlists and assembles MP4 files with FFmpeg. `subtitles_download.py` downloads WebVTT segments and exports VTT, SRT, or TXT; it reuses playlist and HTTP helpers from `hls_download.py`. The matching tests are `test_hls_download.py` and `test_subtitles_download.py`. Start with `README.md`; `HLS_README.md` and `SUBTITLES_README.md` document each tool's inputs and limits. Captured requests and signed playlists are local inputs, not repository fixtures.
+This repository keeps its Python modules and tests at the top level. `hls_download.py` downloads completed, unencrypted HLS video playlists (MPEG-TS or fragmented MP4) and assembles MP4 files with FFmpeg; `--audio-curl-file` pairs a separate audio playlist. `subtitles_download.py` downloads WebVTT segments and exports VTT, SRT, or TXT; it reuses playlist and HTTP helpers from `hls_download.py`. The matching tests are `test_hls_download.py` and `test_subtitles_download.py`. Start with `README.md`; `HLS_README.md` and `SUBTITLES_README.md` document each tool's inputs and limits. Captured requests and signed playlists are local inputs, not repository fixtures.
 
 ## Development and Test Commands
 

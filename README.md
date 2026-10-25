@@ -1,6 +1,6 @@
 # HLS Tools
 
-Small, standard-library Python tools for downloading a completed HLS video or subtitle track from a media playlist. The video tool remuxes MPEG-TS segments into MP4 with FFmpeg. The subtitle tool combines WebVTT segments into VTT, SRT, or plain text.
+Small, standard-library Python tools for downloading a completed HLS video or subtitle track from a media playlist. The video tool remuxes MPEG-TS or fragmented MP4 segments into MP4 with FFmpeg. The subtitle tool combines WebVTT segments into VTT, SRT, or plain text.
 
 ## Requirements
 
@@ -29,6 +29,12 @@ python3 hls_download.py --curl-file request.txt
 
 `--inspect` checks the playlist without downloading its segments. The download saves to `downloads-YYYY-MM-DD/video.mp4` inside the repository, using your local date. You can choose another path with `--output video.mp4`. The tool also accepts `--playlist-url URL` or `--playlist-file path/to/playlist.m3u8`. For saved playlists with relative segment URLs, supply `--base-url ORIGINAL_PLAYLIST_URL`.
 
+If the video playlist has no audio, capture its separate audio playlist as another cURL file and pair them:
+
+```bash
+python3 hls_download.py --curl-file video-request.txt --audio-curl-file audio-request.txt
+```
+
 ### Download subtitles
 
 Capture the **subtitle playlist** request separately and save its cURL command as `subtitles-request.txt`:
@@ -44,7 +50,7 @@ The default destination is `downloads-YYYY-MM-DD/subtitles.srt` in this example.
 
 Both tools accept completed, unencrypted media playlists and preserve the exact segment URLs. Browser cookies and authorization headers from a copied cURL request are scoped to the playlist's origin. Existing output files are never overwritten; if the default filename already exists, choose another name with `--output`. Failed downloads retain a temporary directory beside the requested output for inspection.
 
-Master playlists, live streams, encryption, byte ranges, initialization segments, and discontinuities are outside the supported subset. Video downloads also require standard MPEG-TS segments and codecs compatible with MP4 remuxing. Signed URLs can expire; capture a fresh request if access fails.
+Master playlists, live streams, encryption, byte ranges, multiple initialization segments, and discontinuities are outside the supported subset. Video downloads require MPEG-TS or fragmented MP4 segments and codecs compatible with MP4 remuxing. Signed URLs can expire; capture a fresh request if access fails.
 
 ## More information
 

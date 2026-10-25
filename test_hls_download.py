@@ -66,10 +66,15 @@ class Tests(unittest.TestCase):
         self.assertEqual(playlist.duration, 9)
         self.assertFalse(playlist.issues)
         self.assertTrue(hls.parse_playlist(text).issues)
+        fragmented = hls.parse_playlist(text.replace('#EXTINF:5,',
+            '#EXT-X-MAP:URI="init.mp4?signature=init"\n#EXTINF:5,', 1),
+            'https://example.test/media/rendition.m3u8?token=secret')
+        self.assertEqual(fragmented.init_url, 'https://example.test/media/init.mp4?signature=init')
+        self.assertFalse(fragmented.issues)
 
     def test_unsupported(self):
         for tag in ['#EXT-X-STREAM-INF:BANDWIDTH=100', '#EXT-X-KEY:METHOD=AES-128',
-                    '#EXT-X-BYTERANGE:100', '#EXT-X-MAP:URI="init.mp4"',
+                    '#EXT-X-BYTERANGE:100', '#EXT-X-MAP:URI="init.mp4",BYTERANGE="100@0"',
                     '#EXT-X-DISCONTINUITY']:
             with self.subTest(tag=tag):
                 self.assertTrue(hls.parse_playlist(manifest([(5, 'https://example.test/a.ts')], tag + '\n')).issues)
@@ -77,6 +82,48 @@ class Tests(unittest.TestCase):
         for value in ['nan', '-1', 'garbage']:
             with self.assertRaises(hls.DownloadError):
                 hls.parse_playlist(manifest([(value, 'https://example.test/a.ts')]))
+
+    def test_fragmented_mp4_with_separate_audio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video = subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                'testsrc=size=160x120:rate=25', '-t', '4', '-an', '-c:v', 'libx264',
+                '-pix_fmt', 'yuv420p', '-g', '50', '-hls_segment_type', 'fmp4',
+                '-hls_fmp4_init_filename', 'video-init.mp4',
+                '-hls_time', '2', '-hls_list_size', '0', str(root / 'video.m3u8')], capture_output=True)
+            self.assertEqual(video.returncode, 0, video.stderr)
+            audio = subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                'sine=frequency=440', '-t', '4', '-vn', '-c:a', 'aac',
+                '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'audio-init.mp4',
+                '-hls_time', '2', '-hls_list_size', '0',
+                str(root / 'audio.m3u8')], capture_output=True)
+            self.assertEqual(audio.returncode, 0, audio.stderr)
+
+            class Handler(http.server.SimpleHTTPRequestHandler):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, directory=str(root), **kwargs)
+
+                def log_message(self, *args):
+                    pass
+
+            with patch('socket.getfqdn', return_value='localhost'):
+                server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f'http://127.0.0.1:{server.server_port}'
+                audio_curl = root / 'audio-request.txt'
+                audio_curl.write_text(f"curl '{base}/audio.m3u8'")
+                output = root / 'combined.mp4'
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = hls.main(['--playlist-url', base + '/video.m3u8',
+                        '--audio-curl-file', str(audio_curl), '--output', str(output)])
+                self.assertEqual(code, 0)
+                self.assertEqual({s['codec_type'] for s in hls.probe(output)['streams']}, {'audio', 'video'})
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join()
 
     def test_http_and_end_to_end(self):
         with tempfile.TemporaryDirectory() as directory:

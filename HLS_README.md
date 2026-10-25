@@ -1,6 +1,6 @@
 # Python HLS downloader
 
-This educational downloader handles completed, unencrypted MPEG-TS media playlists.
+This educational downloader handles completed, unencrypted MPEG-TS and fragmented MP4 media playlists.
 Python downloads exact segment URLs in order; FFmpeg packages the local media into MP4
 without re-encoding. No Python packages are needed. Install FFmpeg/FFprobe on PATH.
 
@@ -42,6 +42,16 @@ signature is never copied to segment URLs. Expired signatures require a fresh
 capture. Cookie files, shell pipelines, POST requests, and PowerShell/cmd syntax
 are not supported. `--inspect` works with cURL input too.
 
+Some HLS videos use separate audio and video playlists. Save each playlist request
+as its own cURL file, then combine the tracks in one run:
+
+```bash
+python3 hls_download.py --curl-file video-request.txt --audio-curl-file audio-request.txt
+```
+
+The video playlist must contain video. The optional audio playlist must contain
+audio. A video-only playlist without `--audio-curl-file` produces a silent MP4.
+
 An HLS playlist describes the segments of **one video**, not a collection of
 classes/videos. Downloading a website's collection requires a separate input flow.
 
@@ -64,7 +74,7 @@ Existing outputs are never overwritten. Verification checks video, source audio
 track count, and duration. Failed jobs retain a `.hls-download-*` directory beside
 the requested output for examination. This version does not resume retained jobs.
 
-Master playlists, separate audio, live streams, encryption, byte ranges, initialization
+Master playlists, live streams, encryption, byte ranges, multiple initialization
 segments, and discontinuities require a broader downloader. This program does not
 extract browser cookies automatically or change signed URLs. An MP4 remux can also fail when the
 source codecs are incompatible with that container.

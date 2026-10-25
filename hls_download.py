@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download simple, completed MPEG-TS HLS playlists using the standard library."""
+"""Download completed MPEG-TS or fragmented MP4 HLS media playlists."""
 import argparse
 from dataclasses import dataclass
 from datetime import date
@@ -134,6 +134,7 @@ class Playlist:
     segments: list
     target: float
     issues: list
+    init_url: str = None
 
     @property
     def duration(self):
@@ -151,7 +152,6 @@ def parse_playlist(text, base_url=None):
         '#EXT-X-SESSION-KEY': 'encryption',
         '#EXT-X-KEY': 'encryption/key declarations',
         '#EXT-X-BYTERANGE': 'byte ranges',
-        '#EXT-X-MAP': 'initialization segments',
         '#EXT-X-DISCONTINUITY': 'discontinuities',
         '#EXT-X-DISCONTINUITY-SEQUENCE': 'discontinuities',
         '#EXT-X-GAP': 'missing segments',
@@ -159,11 +159,25 @@ def parse_playlist(text, base_url=None):
         '#EXT-X-I-FRAMES-ONLY': 'I-frame-only media',
     }
     issues, segments = [], []
+    init_url = None
     pending, target = None, 0
     for line in lines:
         tag = line.split(':', 1)[0]
         if tag in unsupported:
             issues.append(unsupported[tag])
+        if tag == '#EXT-X-MAP':
+            match = re.search(r'(?:^|,)URI="([^"]+)"(?:,|$)', line.partition(':')[2])
+            if not match or init_url is not None:
+                issues.append('invalid or multiple initialization segments')
+            else:
+                init_url = urllib.parse.urljoin(base_url, match.group(1)) if base_url else match.group(1)
+                parsed = urllib.parse.urlsplit(init_url)
+                if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+                    issues.append('initialization URI requires --base-url, or URI is not HTTP(S)')
+                if parsed.username or parsed.password:
+                    issues.append('credentials embedded in initialization URL')
+            if 'BYTERANGE=' in line:
+                issues.append('byte ranges')
         if tag == '#EXT-X-TARGETDURATION':
             try:
                 target = float(line.split(':', 1)[1])
@@ -197,7 +211,7 @@ def parse_playlist(text, base_url=None):
         issues.append('target duration missing')
     if not segments:
         issues.append('no media segments')
-    return Playlist(segments, target, list(dict.fromkeys(issues)))
+    return Playlist(segments, target, list(dict.fromkeys(issues)), init_url)
 
 
 def fetch(url, headers, destination=None, credential_origin=None):
@@ -256,20 +270,54 @@ def probe(path):
         raise DownloadError('FFprobe returned invalid metadata.') from None
 
 
-def assemble(playlist, work, output):
+def download_segments(playlist, work, headers, credential_origin):
+    if playlist.init_url:
+        fetch(playlist.init_url, headers, work / 'init.mp4', credential_origin=credential_origin)
+    extension = 'm4s' if playlist.init_url else 'ts'
+    for index, segment in enumerate(playlist.segments):
+        destination = work / f'{index:06d}.{extension}'
+        fetch(segment.url, headers, destination, credential_origin=credential_origin)
+        if not playlist.init_url:
+            with destination.open('rb') as stream:
+                prefix = stream.read(377)
+            if len(prefix) < 377 or any(prefix[pos] != 0x47 for pos in (0, 188, 376)):
+                raise DownloadError(f'Segment {index + 1} is not standard MPEG-TS media.')
+        print(f'Downloaded {index + 1}/{len(playlist.segments)}', flush=True)
+
+
+def local_manifest(playlist, work):
     manifest = work / 'local.m3u8'
-    lines = ['#EXTM3U', '#EXT-X-VERSION:3',
+    lines = ['#EXTM3U', f'#EXT-X-VERSION:{7 if playlist.init_url else 3}',
              f'#EXT-X-TARGETDURATION:{math.ceil(max(playlist.target, max(s.duration for s in playlist.segments)))}',
              '#EXT-X-PLAYLIST-TYPE:VOD']
+    if playlist.init_url:
+        lines.append('#EXT-X-MAP:URI="init.mp4"')
+    extension = 'm4s' if playlist.init_url else 'ts'
     for index, segment in enumerate(playlist.segments):
-        lines.extend([f'#EXTINF:{segment.duration:.9f},', f'{index:06d}.ts'])
+        lines.extend([f'#EXTINF:{segment.duration:.9f},', f'{index:06d}.{extension}'])
     lines.append('#EXT-X-ENDLIST')
     manifest.write_text('\n'.join(lines) + '\n')
+    return manifest
+
+
+def assemble(playlist, work, output, audio_playlist=None, audio_work=None):
+    manifest = local_manifest(playlist, work)
     source = probe(manifest)
     source_audio = sum(s['codec_type'] == 'audio' for s in source['streams'])
+    inputs = ['-i', str(manifest)]
+    maps = ['-map', '0:v', '-map', '0:a?']
+    if audio_playlist:
+        audio_manifest = local_manifest(audio_playlist, audio_work)
+        audio_source = probe(audio_manifest)
+        extra_audio = sum(s['codec_type'] == 'audio' for s in audio_source['streams'])
+        if not extra_audio:
+            raise DownloadError('The audio playlist contains no audio track.')
+        source_audio += extra_audio
+        inputs.extend(['-i', str(audio_manifest)])
+        maps.extend(['-map', '1:a'])
     staged = work / 'result.mp4'
-    result = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-n', '-i', str(manifest),
-                             '-map', '0:v', '-map', '0:a?', '-c', 'copy',
+    result = subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-n', *inputs,
+                             *maps, '-c', 'copy',
                              '-movflags', '+faststart', str(staged)], capture_output=True, text=True)
     if result.returncode:
         raise DownloadError('FFmpeg could not remux these tracks into MP4; downloaded files were retained.')
@@ -305,6 +353,7 @@ def main(argv=None):
     inputs.add_argument('--playlist-url')
     inputs.add_argument('--playlist-file', type=Path)
     inputs.add_argument('--curl-file', help='File containing Chrome Copy as cURL (bash); use - for stdin')
+    parser.add_argument('--audio-curl-file', type=Path, help='Optional separate audio playlist cURL file')
     parser.add_argument('--base-url', help='Original playlist URL for resolving relative segment URIs')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--referer')
@@ -344,21 +393,33 @@ def main(argv=None):
             if args.inspect:
                 return 0
             raise DownloadError('This playlist is outside the supported subset.')
+        audio_playlist = None
+        audio_url = None
+        audio_headers = None
+        if args.audio_curl_file:
+            audio_url, copied = parse_curl(args.audio_curl_file.expanduser().read_text())
+            audio_headers = {'user-agent': 'Python-HLS-Downloader/1.0', 'accept': '*/*', **copied}
+            audio_data, audio_final = fetch(audio_url, audio_headers, credential_origin=audio_url)
+            audio_playlist = parse_playlist(audio_data.decode('utf-8-sig'), audio_final)
+            print(f'Audio segments: {len(audio_playlist.segments)}; duration: {audio_playlist.duration:.5f}s')
+            if audio_playlist.issues:
+                print('Unsupported audio features: ' + '; '.join(audio_playlist.issues))
+                if args.inspect:
+                    return 0
+                raise DownloadError('The audio playlist is outside the supported subset.')
         if args.inspect:
             print('Supported: completed, unencrypted media playlist. Media format is checked during download.')
             return 0
         if not args.output:
             output.parent.mkdir(exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix='.hls-download-', dir=output.parent))
-        for index, segment in enumerate(playlist.segments):
-            destination = work / f'{index:06d}.ts'
-            fetch(segment.url, headers, destination, credential_origin=playlist_url)
-            with destination.open('rb') as stream:
-                prefix = stream.read(377)
-            if len(prefix) < 377 or any(prefix[pos] != 0x47 for pos in (0, 188, 376)):
-                raise DownloadError(f'Segment {index + 1} is not standard MPEG-TS media.')
-            print(f'Downloaded {index + 1}/{len(playlist.segments)}', flush=True)
-        duration, audio = assemble(playlist, work, output)
+        download_segments(playlist, work, headers, playlist_url)
+        audio_work = None
+        if audio_playlist:
+            audio_work = work / 'audio'
+            audio_work.mkdir()
+            download_segments(audio_playlist, audio_work, audio_headers, audio_url)
+        duration, audio = assemble(playlist, work, output, audio_playlist, audio_work)
         shutil.rmtree(work)
         work = None
         print(f'Saved {output} ({duration:.3f}s; {audio} audio track(s)).')

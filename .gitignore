@@ -6,6 +6,7 @@ __pycache__/
 # Local browser captures and signed playlists
 request*.txt
 *request*.txt
+requests/
 *.m3u8
 
 # Outputs and retained download jobs
