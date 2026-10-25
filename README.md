@@ -1,0 +1,55 @@
+# HLS Tools
+
+Small, standard-library Python tools for downloading a completed HLS video or subtitle track from a media playlist. The video tool remuxes MPEG-TS segments into MP4 with FFmpeg. The subtitle tool combines WebVTT segments into VTT, SRT, or plain text.
+
+## Requirements
+
+- Python 3. No `pip install` step is needed.
+- `ffmpeg` and `ffprobe` on your `PATH` for video downloads. Subtitle downloads do not need them.
+- A media playlist (`.m3u8`) or a fresh browser request for a playlist you are authorized to access.
+
+## Quick start
+
+Clone the repository and work from its root:
+
+```bash
+git clone https://github.com/malctaylor15/hls-tools.git
+cd hls-tools
+python3 -m unittest -v
+```
+
+### Download video
+
+In your browser's Network panel, locate the **media playlist** request (often `rendition.m3u8`), then use **Copy as cURL (bash)**. Save that command in a local file such as `request.txt` and run:
+
+```bash
+python3 hls_download.py --curl-file request.txt --inspect
+python3 hls_download.py --curl-file request.txt --output video.mp4
+```
+
+`--inspect` checks the playlist without downloading its segments. You can also use `--playlist-url URL` or `--playlist-file path/to/playlist.m3u8`. For saved playlists with relative segment URLs, supply `--base-url ORIGINAL_PLAYLIST_URL`.
+
+### Download subtitles
+
+Capture the **subtitle playlist** request separately and save its cURL command as `subtitles-request.txt`:
+
+```bash
+python3 subtitles_download.py --curl-file subtitles-request.txt --inspect
+python3 subtitles_download.py --curl-file subtitles-request.txt --output subtitles.srt
+```
+
+Use an output name ending in `.vtt` or `.txt` for those formats. The subtitle tool accepts the same playlist input options as the video tool. If you have a saved subtitle playlist, use `--playlist-file path/to/subtitles.m3u8`.
+
+## What the tools support
+
+Both tools accept completed, unencrypted media playlists and preserve the exact segment URLs. Browser cookies and authorization headers from a copied cURL request are scoped to the playlist's origin. Existing output files are never overwritten. Failed downloads retain a temporary directory beside the requested output for inspection.
+
+Master playlists, live streams, encryption, byte ranges, initialization segments, and discontinuities are outside the supported subset. Video downloads also require standard MPEG-TS segments and codecs compatible with MP4 remuxing. Signed URLs can expire; capture a fresh request if access fails.
+
+## More information
+
+- [Video inputs, header handling, and limits](HLS_README.md)
+- [Subtitle timing, formats, and limits](SUBTITLES_README.md)
+- [Contributor guidelines](AGENTS.md)
+
+Keep captured request files, signed playlists, and downloaded media out of Git. The test suite uses local HTTP fixtures rather than live requests.

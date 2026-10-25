@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Local browser captures and signed playlists
+request*.txt
+*request*.txt
+*.m3u8
+
+# Outputs and retained download jobs
+*.mp4
+*.vtt
+*.srt
+.hls-download-*/
+.hls-subtitles-*/
