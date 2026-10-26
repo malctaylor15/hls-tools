@@ -1,4 +1,6 @@
-# Media folder template
+# Media folder template (optional)
+
+For a single file containing all playlist links, use [playlists.example.txt](../playlists.example.txt) instead.
 
 Make one folder per recording. Put any combination of these inputs inside it:
 

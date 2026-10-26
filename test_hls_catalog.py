@@ -13,6 +13,25 @@ import hls_download as hls
 
 
 class Tests(unittest.TestCase):
+    def test_one_file_keyword_and_multiline_curl(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'saved.m3u8').write_text('#EXTM3U\n#EXT-X-ENDLIST\n')
+            bundle = root / 'playlists.txt'
+            bundle.write_text('[Rewild Day 1]\n'
+                "curl 'https://example.test/video.m3u8' \\\n"
+                "  -H 'Referer: https://example.test/'\n"
+                '@saved.m3u8\n'
+                '[Other]\nhttps://example.test/other.m3u8\n')
+            sources = catalog.input_sources(bundle, 'rewild day 1')
+            self.assertEqual(len(sources), 2)
+            self.assertEqual(sources[0].headers['referer'], 'https://example.test/')
+            self.assertTrue(sources[1].text.startswith('#EXTM3U'))
+            self.assertEqual(len(catalog.input_sources(bundle, 'other')), 1)
+            plain = root / 'plain.txt'
+            plain.write_text('https://example.test/rewild/video.m3u8\n')
+            self.assertEqual(len(catalog.input_sources(plain, 'rewild')), 1)
+
     def test_master_expansion(self):
         parent = catalog.Source('master.url', 'https://example.test/master.m3u8', {},
             'https://example.test/master.m3u8', base_url='https://example.test/master.m3u8')
@@ -81,6 +100,15 @@ class Tests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     master_tracks = catalog.scan(master_inputs)
                 self.assertEqual({track.kind for track in master_tracks}, {'video', 'audio', 'subtitles'})
+                bundle = root / 'playlists.txt'
+                bundle.write_text(f'[Recording One]\n{base}/master.m3u8\n'
+                    f'[Unrelated]\n{base}/missing.m3u8\n')
+                with contextlib.redirect_stdout(io.StringIO()):
+                    selected = catalog.scan(bundle, 'recording one')
+                self.assertEqual({track.kind for track in selected}, {'video', 'audio', 'subtitles'})
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(catalog.main(['download', str(bundle), '--kind', 'video',
+                        '--output', str(root / 'should-not-exist.mp4')]), 1)
                 video_track = catalog.choose(tracks, 'video')
                 audio_track = catalog.choose(tracks, 'audio')
                 subtitle_track = catalog.choose(tracks, 'subtitles')
@@ -100,7 +128,12 @@ class Tests(unittest.TestCase):
                     self.assertEqual(catalog.main(['list', str(inputs)]), 0)
                     self.assertEqual(catalog.main(['download', str(inputs), '--kind', 'audio',
                         '--output', str(root / 'via-cli.m4a')]), 0)
+                    self.assertEqual(catalog.main(['download', str(bundle), '--keyword',
+                        'recording one', '--kind', 'video', '--output',
+                        str(root / 'from-bundle.mp4')]), 0)
                 self.assertTrue((root / 'via-cli.m4a').is_file())
+                self.assertEqual({s['codec_type'] for s in hls.probe(root / 'from-bundle.mp4')['streams']},
+                    {'video', 'audio'})
             finally:
                 server.shutdown()
                 server.server_close()

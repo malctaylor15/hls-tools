@@ -1,0 +1,13 @@
+# Copy this file to playlists.txt, then paste each .m3u8 URL on its own line.
+# You do not need to label URLs as video, audio, or subtitles.
+# A copied Chrome cURL command may also be pasted here, including its \ line continuations.
+# If a URL does not contain the recording name, put it under a [Title] heading.
+
+[Rewild Day 1]
+# Paste all playlist links or cURL commands for this recording below.
+
+[SS Frictions]
+# Paste all playlist links or cURL commands for this recording below.
+
+# To refer to an existing cURL or saved .m3u8 file instead, use one line like:
+# @requests/rewild day1/rewild_day1_link1.txt

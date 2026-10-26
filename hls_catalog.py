@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Find media tracks in a folder of HLS playlists, URLs, or cURL requests."""
+"""Find media tracks in a link list or a folder of HLS inputs."""
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,33 +36,74 @@ class Track:
     has_audio: bool = False
 
 
-def input_sources(folder):
+def source_from_text(name, text, path=None):
+    text = text.strip()
+    if text.startswith('curl '):
+        url, copied = hls.parse_curl(text)
+        return Source(name, url, {'user-agent': 'Python-HLS-Downloader/1.0',
+            'accept': '*/*', **copied}, url)
+    if text.startswith(('http://', 'https://')) and '\n' not in text:
+        parsed = urllib.parse.urlsplit(text)
+        if parsed.username or parsed.password:
+            raise hls.DownloadError('URL contains embedded credentials.')
+        return Source(name, text,
+            {'user-agent': 'Python-HLS-Downloader/1.0', 'accept': '*/*'}, text)
+    if path and path.suffix.lower() == '.m3u8':
+        sidecar = path.with_name(path.name + '.base-url.txt')
+        base = sidecar.read_text().strip() if sidecar.exists() else None
+        return Source(name, text=text, base_url=base)
+    raise hls.DownloadError('Expected one playlist URL, cURL command, or .m3u8 file.')
+
+
+def bundle_entries(path):
+    pending, start = '', 0
+    for number, raw in enumerate(path.read_text(encoding='utf-8-sig').splitlines(), 1):
+        if not pending:
+            start = number
+        pending += raw + '\n'
+        if raw.rstrip().endswith('\\'):
+            continue
+        yield start, pending.strip()
+        pending = ''
+    if pending.strip():
+        yield start, pending.strip()
+
+
+def input_sources(location, keyword=None):
     sources = []
-    for path in sorted(folder.iterdir()):
+    if location.is_file():
+        group = ''
+        for number, entry in bundle_entries(location):
+            if not entry or entry.startswith(('#', ';')):
+                continue
+            heading = re.fullmatch(r'\[([^]]+)\]', entry)
+            if heading:
+                group = heading[1].strip()
+                continue
+            if keyword and keyword.casefold() not in (group + ' ' + entry).casefold():
+                continue
+            name = f'{group or location.stem} / line {number}'
+            try:
+                if entry.startswith('@') or entry.lower().endswith('.m3u8') and not entry.startswith(('http://', 'https://')):
+                    target = (location.parent / entry.lstrip('@')).resolve()
+                    sources.append(source_from_text(name, target.read_text(encoding='utf-8-sig'), target))
+                else:
+                    sources.append(source_from_text(name, entry))
+            except (hls.DownloadError, OSError, UnicodeError, ValueError) as error:
+                reason = str(error) if isinstance(error, hls.DownloadError) else 'invalid or unreadable input'
+                print(f'Skipped {name}: {reason}', file=sys.stderr)
+        if not sources:
+            raise hls.DownloadError('No matching playlist entries. Check --keyword or add a [Title] heading.')
+        return sources
+    for path in sorted(location.iterdir()):
         if not path.is_file() or path.name.startswith('.') or path.name.endswith('.base-url.txt'):
             continue
         if path.suffix.lower() not in ('.m3u8', '.txt', '.url'):
             continue
         try:
-            text = path.read_text(encoding='utf-8-sig').strip()
-            if not text:
-                continue
-            if text.startswith('curl '):
-                url, copied = hls.parse_curl(text)
-                sources.append(Source(path.name, url, {'user-agent': 'Python-HLS-Downloader/1.0',
-                    'accept': '*/*', **copied}, url))
-            elif text.startswith(('http://', 'https://')) and '\n' not in text:
-                parsed = urllib.parse.urlsplit(text)
-                if parsed.username or parsed.password:
-                    raise hls.DownloadError('URL contains embedded credentials.')
-                sources.append(Source(path.name, text,
-                    {'user-agent': 'Python-HLS-Downloader/1.0', 'accept': '*/*'}, text))
-            elif path.suffix.lower() == '.m3u8':
-                sidecar = path.with_name(path.name + '.base-url.txt')
-                base = sidecar.read_text().strip() if sidecar.exists() else None
-                sources.append(Source(path.name, text=text, base_url=base))
-            else:
-                raise hls.DownloadError('Expected one URL or a Chrome cURL command.')
+            text = path.read_text(encoding='utf-8-sig')
+            if text.strip():
+                sources.append(source_from_text(path.name, text, path))
         except (hls.DownloadError, OSError, UnicodeError, ValueError) as error:
             reason = str(error) if isinstance(error, hls.DownloadError) else 'invalid or unreadable input'
             print(f'Skipped {path.name}: {reason}', file=sys.stderr)
@@ -139,8 +180,8 @@ def classify(source, playlist):
     raise hls.DownloadError(f'{source.name}: no supported audio, video, or WebVTT track found.')
 
 
-def scan(folder):
-    queue = input_sources(folder)
+def scan(location, keyword=None):
+    queue = input_sources(location, keyword)
     tracks, seen = [], set()
     while queue:
         source = queue.pop(0)
@@ -240,9 +281,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='action', required=True)
     listing = sub.add_parser('list', help='Identify tracks without downloading the full media')
-    listing.add_argument('folder', type=Path)
+    listing.add_argument('source', type=Path, help='Link list file or folder of playlist inputs')
+    listing.add_argument('--keyword', help='Match a [Title] heading or text in a URL')
     downloading = sub.add_parser('download', help='Download a selected track')
-    downloading.add_argument('folder', type=Path)
+    downloading.add_argument('source', type=Path, help='Link list file or folder of playlist inputs')
+    downloading.add_argument('--keyword', help='Select a [Title] group or matching URLs')
     downloading.add_argument('--kind', choices=('video', 'audio', 'subtitles'), required=True)
     downloading.add_argument('--track', type=int, help='Track number shown by list')
     downloading.add_argument('--audio-track', type=int, help='Audio track number to pair with video')
@@ -251,10 +294,12 @@ def main(argv=None):
     downloading.add_argument('--output', type=Path)
     args = parser.parse_args(argv)
     try:
-        folder = args.folder.expanduser().resolve()
-        if not folder.is_dir():
-            raise hls.DownloadError('Input folder does not exist.')
-        tracks = scan(folder)
+        location = args.source.expanduser().resolve()
+        if not location.exists() or not (location.is_file() or location.is_dir()):
+            raise hls.DownloadError('Input link list or folder does not exist.')
+        if args.action == 'download' and location.is_file() and not args.keyword:
+            raise hls.DownloadError('Use --keyword to select one recording from a link list.')
+        tracks = scan(location, args.keyword)
         for index, track in enumerate(tracks, 1):
             detail = f'{track.height}p' if track.kind == 'video' and track.height else track.language or ''
             print(f'{index:>2}  {track.kind:<9} {detail:<8} {track.source.name}')
@@ -264,7 +309,8 @@ def main(argv=None):
         audio = choose(tracks, 'audio', args.audio_track) if args.audio_track else (
             next((item for item in tracks if item.kind == 'audio'), None)
             if args.kind == 'video' and not track.has_audio else None)
-        slug = re.sub(r'[^a-z0-9]+', '-', folder.name.lower()).strip('-') or 'media'
+        title = args.keyword if location.is_file() else location.name
+        slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-') or 'media'
         suffix = '.mp4' if args.kind == 'video' else '.m4a' if args.kind == 'audio' else f'.{args.format}'
         label = f'-{track.height}p' if args.kind == 'video' and track.height else f'-{args.kind}'
         output = args.output.expanduser().absolute() if args.output else hls.default_output(slug + label + suffix)

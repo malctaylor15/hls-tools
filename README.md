@@ -18,20 +18,20 @@ cd hls-tools
 python3 -m unittest -v
 ```
 
-## Organize several playlists
+## Put all links in one file
 
-Put all playlist inputs for one recording in a folder. The catalog accepts saved `.m3u8` responses, plain URL files, and Chrome cURL request files. It identifies video resolutions, audio tracks, and WebVTT subtitles; a master playlist is expanded into its media tracks.
+Copy [playlists.example.txt](playlists.example.txt) to `playlists.txt`. Add a `[Title]` heading for each recording, then paste its `.m3u8` URLs below it, one per line. You do **not** need to know which links are video, audio, or subtitles. A copied Chrome cURL command can also go in the file; use `@path/to/request.txt` to reference an existing capture or saved playlist file. Headings let `--keyword` find the right recording even when signed URLs are opaque.
 
 ```bash
-mkdir -p 'media/My Recording'
-# Add your playlist files or links to that folder, then:
-python3 hls_catalog.py list 'media/My Recording'
-python3 hls_catalog.py download 'media/My Recording' --kind video
-python3 hls_catalog.py download 'media/My Recording' --kind audio
-python3 hls_catalog.py download 'media/My Recording' --kind subtitles --format srt
+cp playlists.example.txt playlists.txt
+# Edit playlists.txt and add fresh links, then:
+python3 hls_catalog.py list playlists.txt --keyword 'Rewild Day 1'
+python3 hls_catalog.py download playlists.txt --keyword 'Rewild Day 1' --kind video
+python3 hls_catalog.py download playlists.txt --keyword 'Rewild Day 1' --kind audio
+python3 hls_catalog.py download playlists.txt --keyword 'Rewild Day 1' --kind subtitles --format srt
 ```
 
-Video defaults to the highest resolution and pairs the first separate audio track when needed. Use `--track N` to choose a numbered track from `list`, `--audio-track N` to choose a different audio track, or `--quality lowest`. The catalog saves files in the dated downloads folder. See the [folder template](media/TEMPLATE.md) for file formats and examples.
+The catalog fetches each matching playlist, identifies video resolution and audio/subtitle tracks, and expands master playlists. Video defaults to the highest resolution and pairs the first separate audio track when needed. Use `--track N` to choose a numbered track from `list`, `--audio-track N` for another audio track, or `--quality lowest`. Downloads go to the dated downloads folder. `list` without `--keyword` shows every group. If you prefer separate files, the [folder template](media/TEMPLATE.md) still works.
 
 ### Download video
 
