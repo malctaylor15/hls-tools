@@ -18,6 +18,21 @@ cd hls-tools
 python3 -m unittest -v
 ```
 
+## Organize several playlists
+
+Put all playlist inputs for one recording in a folder. The catalog accepts saved `.m3u8` responses, plain URL files, and Chrome cURL request files. It identifies video resolutions, audio tracks, and WebVTT subtitles; a master playlist is expanded into its media tracks.
+
+```bash
+mkdir -p 'media/My Recording'
+# Add your playlist files or links to that folder, then:
+python3 hls_catalog.py list 'media/My Recording'
+python3 hls_catalog.py download 'media/My Recording' --kind video
+python3 hls_catalog.py download 'media/My Recording' --kind audio
+python3 hls_catalog.py download 'media/My Recording' --kind subtitles --format srt
+```
+
+Video defaults to the highest resolution and pairs the first separate audio track when needed. Use `--track N` to choose a numbered track from `list`, `--audio-track N` to choose a different audio track, or `--quality lowest`. The catalog saves files in the dated downloads folder. See the [folder template](media/TEMPLATE.md) for file formats and examples.
+
 ### Download video
 
 In your browser's Network panel, locate the **media playlist** request (often `rendition.m3u8`), then use **Copy as cURL (bash)**. Save that command in a local file such as `request.txt` and run:
