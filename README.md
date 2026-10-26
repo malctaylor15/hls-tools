@@ -31,7 +31,7 @@ python3 hls_catalog.py download playlists.txt --keyword 'Rewild Day 1' --kind au
 python3 hls_catalog.py download playlists.txt --keyword 'Rewild Day 1' --kind subtitles --format srt
 ```
 
-The catalog fetches each matching playlist, identifies video resolution and audio/subtitle tracks, and expands master playlists. Video defaults to the highest resolution and pairs the first separate audio track when needed. Use `--track N` to choose a numbered track from `list`, `--audio-track N` for another audio track, or `--quality lowest`. Downloads go to the dated downloads folder. `list` without `--keyword` shows every group. If you prefer separate files, the [folder template](media/TEMPLATE.md) still works.
+The catalog fetches each matching playlist, identifies video resolution and audio/subtitle tracks, and expands master playlists. Video defaults to the highest resolution and pairs the first separate audio track when needed. Use `--track N` to choose a numbered track from `list`, `--audio-track N` for another audio track, or `--quality lowest`. Downloads go to the dated downloads folder. `list` without `--keyword` shows every group and warns when the same URL appears under different titles. If you prefer separate files, the [folder template](media/TEMPLATE.md) still works.
 
 ### Download video
 

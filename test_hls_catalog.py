@@ -31,6 +31,14 @@ class Tests(unittest.TestCase):
             plain = root / 'plain.txt'
             plain.write_text('https://example.test/rewild/video.m3u8\n')
             self.assertEqual(len(catalog.input_sources(plain, 'rewild')), 1)
+            duplicate = root / 'duplicate.txt'
+            duplicate.write_text('[First]\nhttps://example.test/same.m3u8\n'
+                '[Second]\nhttps://example.test/same.m3u8\n')
+            warnings = io.StringIO()
+            with contextlib.redirect_stderr(warnings):
+                grouped = catalog.input_sources(duplicate)
+            self.assertEqual([source.group for source in grouped], ['First', 'Second'])
+            self.assertIn('same playlist appears', warnings.getvalue())
 
     def test_master_expansion(self):
         parent = catalog.Source('master.url', 'https://example.test/master.m3u8', {},

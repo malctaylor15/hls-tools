@@ -24,6 +24,7 @@ class Source:
     base_url: str = None
     language: str = None
     height: int = None
+    group: str = None
 
 
 @dataclass
@@ -73,6 +74,8 @@ def input_sources(location, keyword=None):
     sources = []
     if location.is_file():
         group = ''
+        url_groups = {}
+        warned_pairs = set()
         for number, entry in bundle_entries(location):
             if not entry or entry.startswith(('#', ';')):
                 continue
@@ -86,9 +89,19 @@ def input_sources(location, keyword=None):
             try:
                 if entry.startswith('@') or entry.lower().endswith('.m3u8') and not entry.startswith(('http://', 'https://')):
                     target = (location.parent / entry.lstrip('@')).resolve()
-                    sources.append(source_from_text(name, target.read_text(encoding='utf-8-sig'), target))
+                    source = source_from_text(name, target.read_text(encoding='utf-8-sig'), target)
                 else:
-                    sources.append(source_from_text(name, entry))
+                    source = source_from_text(name, entry)
+                source.group = group or location.stem
+                if source.url and source.url in url_groups and url_groups[source.url] != source.group:
+                    pair = (source.url, source.group)
+                    if pair not in warned_pairs:
+                        print(f'Warning: the same playlist appears under [{url_groups[source.url]}] '
+                            f'and [{source.group}].', file=sys.stderr)
+                        warned_pairs.add(pair)
+                elif source.url:
+                    url_groups[source.url] = source.group
+                sources.append(source)
             except (hls.DownloadError, OSError, UnicodeError, ValueError) as error:
                 reason = str(error) if isinstance(error, hls.DownloadError) else 'invalid or unreadable input'
                 print(f'Skipped {name}: {reason}', file=sys.stderr)
@@ -103,7 +116,9 @@ def input_sources(location, keyword=None):
         try:
             text = path.read_text(encoding='utf-8-sig')
             if text.strip():
-                sources.append(source_from_text(path.name, text, path))
+                source = source_from_text(path.name, text, path)
+                source.group = location.name
+                sources.append(source)
         except (hls.DownloadError, OSError, UnicodeError, ValueError) as error:
             reason = str(error) if isinstance(error, hls.DownloadError) else 'invalid or unreadable input'
             print(f'Skipped {path.name}: {reason}', file=sys.stderr)
@@ -122,7 +137,8 @@ def child_source(parent, uri, name, language=None, height=None):
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password:
         raise hls.DownloadError(f'{parent.name}: master playlist child needs an HTTP(S) base URL.')
-    return Source(name, url, parent.headers, parent.credential_origin, language=language, height=height)
+    return Source(name, url, parent.headers, parent.credential_origin,
+        language=language, height=height, group=parent.group)
 
 
 def expand_master(source, text):
@@ -185,12 +201,13 @@ def scan(location, keyword=None):
     tracks, seen = [], set()
     while queue:
         source = queue.pop(0)
-        if source.url and source.url in seen:
+        identity = (source.group, source.url)
+        if source.url and identity in seen:
             continue
         try:
             text = read_source(source)
             if source.url:
-                seen.add(source.url)
+                seen.add(identity)
             if '#EXT-X-STREAM-INF:' in text or '#EXT-X-MEDIA:' in text:
                 queue.extend(expand_master(source, text))
                 continue
@@ -300,6 +317,10 @@ def main(argv=None):
         if args.action == 'download' and location.is_file() and not args.keyword:
             raise hls.DownloadError('Use --keyword to select one recording from a link list.')
         tracks = scan(location, args.keyword)
+        if args.action == 'download' and location.is_file():
+            groups = {track.source.group for track in tracks}
+            if len(groups) > 1:
+                raise hls.DownloadError('--keyword matched multiple titles; use a full [Title] heading.')
         for index, track in enumerate(tracks, 1):
             detail = f'{track.height}p' if track.kind == 'video' and track.height else track.language or ''
             print(f'{index:>2}  {track.kind:<9} {detail:<8} {track.source.name}')
